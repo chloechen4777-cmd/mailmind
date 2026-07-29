@@ -144,19 +144,38 @@ function loadUserCats(){
   saveUserCats();
 }
 function saveUserCats(){localStorage.setItem('mm_usercats',JSON.stringify(USER_CATS))}
+
+// Custom reply snippets/templates
+var USER_SNIPPETS=[];
+function loadSnippets(){
+  var s=localStorage.getItem('mm_snippets');
+  if(s)try{USER_SNIPPETS=JSON.parse(s)}catch(e){USER_SNIPPETS=[]}
+  if(!Array.isArray(USER_SNIPPETS))USER_SNIPPETS=[];
+  if(USER_SNIPPETS.length===0){
+    USER_SNIPPETS=[
+      {id:'brief',name:'Brief链接',content:'Here is our brief link: https://example.com/brief  Please review and let us know if you have any questions.'},
+      {id:'invoice',name:'Invoice抬头',content:'Our company details for the invoice:\nCompany Name: xxx Ltd.\nAddress: xxx\nTax ID: xxx\nPlease send the invoice to: finance@example.com'},
+      {id:'followup',name:'追款话术',content:'Thanks for your patience. Our finance team has been wrapping up the quarterly review, and the payment is being processed. We expect it to be completed within this week and will share the confirmation once done.'}
+    ];
+    saveSnippets();
+  }
+}
+function saveSnippets(){localStorage.setItem('mm_snippets',JSON.stringify(USER_SNIPPETS))}
+function getSnippetById(id){return USER_SNIPPETS.find(function(s){return s.id===id})}
+
 function getCatList(){
   var l=[{id:'all',label:'全部',icon:'📥'},{id:'_uncategorized',label:'未分类',icon:'📋'}];
   USER_CATS.forEach(function(n){l.push({id:n,label:n,icon:'📌'})});
   return l;
 }
-loadUserCats();
+loadUserCats();loadSnippets();
 
 var S={
   token:null,tokObj:null,user:null,
   emails:[],selId:null,selDetail:null,
   cat:'all',categories:{},
   classifying:false,loading:false,summary:null,
-  aiState:'idle',translateState:'idle',translation:null,
+  aiState:'idle',translateState:'idle',translation:null,_aiDraftCn:'',
   _showFull:false,
 };
 
@@ -311,25 +330,92 @@ function aiChat(prompt,cb,maxTok){
 function doClassify(){
   S.classifying=true;S._loadTotal=0;S._loadCount=0;draw();
   gmailApi('/messages?maxResults=30&labelIds=INBOX').then(function(all){
-    var msgs=(all.messages||[]).filter(function(m){return!S.categories[m.id]}).slice(0,20);
+    var msgs=(all.messages||[]).filter(function(m){return!S.categories[m.id]}).slice(0,30);
     if(msgs.length===0){showToast('全部已分类完毕');S.classifying=false;draw();return}
     S._loadTotal=msgs.length;S._loadCount=0;draw();
-    var details=[];
-    batchFetch(msgs,10,function(m){return gmailApi('/messages/'+m.id+'?format=full').then(function(d){var hd=d.payload.headers||[];function gh(n){var h=hd.find(function(h){return h.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}var bc='';if(d.payload.body&&d.payload.body.data)bc=atob(d.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));return{id:m.id,subject:gh('Subject'),from:gh('From'),snippet:d.snippet||'',body:bc}})},function(d,t){S._loadCount=d;draw()},function(results){doClassify2(results.filter(function(r){return r}))})}).catch(function(e){console.error(e);showToast('获取失败',false);S.classifying=false;draw()});
+    batchFetch(msgs,8,function(m){
+      return gmailApi('/messages/'+m.id+'?format=metadata&metadataHeaders=Subject&metadataHeaders=From').then(function(d){
+        var hd=d.payload.headers||[];
+        function gh(n){var h=hd.find(function(h){return h.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}
+        return{id:m.id,subject:gh('Subject')||'',from:gh('From')||'',snippet:d.snippet||'',labelIds:d.labelIds||[]};
+      }).catch(function(e){console.error('fetch meta error',e);return null})
+    },function(d,t){S._loadCount=d;draw()},function(results){
+      doClassify2(results.filter(function(r){return r}))
+    })
+  }).catch(function(e){console.error(e);showToast('获取失败',false);S.classifying=false;draw()});
 }
+
+function classifyByLabel(labelIds){
+  if(!labelIds||labelIds.length===0)return null;
+  var map={
+    'Looki':'Looki','Vocci':'Vocci','Invoice':'Invoice','Partnership':'Partnership',
+    'Work':'Work','Personal':'Personal','Finance':'Finance','Newsletter':'Newsletter',
+    'Social':'Social','Urgent':'Urgent','Travel':'Travel','Receipts':'Receipts'
+  };
+  for(var i=0;i<labelIds.length;i++){
+    var lid=labelIds[i];
+    if(map[lid])return map[lid];
+    for(var k in map){if(lid.toLowerCase()===k.toLowerCase())return map[k]}
+  }
+  return null;
+}
+
+function classifyByKeywords(subject,from){
+  var text=(subject+' '+from).toLowerCase();
+  var rules=[
+    {keys:['looki'],cat:'Looki'},
+    {keys:['vocci'],cat:'Vocci'},
+    {keys:['invoice','payment','receipt','billing'],cat:'Invoice'},
+    {keys:['partnership','collaboration','sponsor'],cat:'Partnership'},
+    {keys:['travel','flight','hotel','booking'],cat:'Travel'},
+    {keys:['newsletter','subscription','digest'],cat:'Newsletter'},
+    {keys:['linkedin','twitter','x.com','instagram','facebook','social'],cat:'Social'}
+  ];
+  for(var i=0;i<rules.length;i++){
+    for(var j=0;j<rules[i].keys.length;j++){
+      if(text.indexOf(rules[i].keys[j])>=0)return rules[i].cat;
+    }
+  }
+  return null;
+}
+
+function normalizeCat(cn){
+  cn=(cn||'').trim();
+  if(!cn||cn.toLowerCase()==='uncategorized'||cn.toLowerCase()==='other')return null;
+  return cn.charAt(0).toUpperCase()+cn.slice(1);
+}
+
 function doClassify2(details){
   if(details.length===0){S.classifying=false;draw();return}
-  var cl=USER_CATS.join(', ');
-  var prompt='你是一个邮件分类器。从每封邮件的主题、发件人、正文中提取品牌/项目名来分类。\n\n规则：\n1. 优先从邮件主题（Subject）中提取品牌关键词\n2. 如果没有明确品牌，看发件人域名\n3. 实在无法识别归为 Uncategorized\n4. 已有分类：'+(cl||'暂无，请自行从邮件提取')+'\n5. 优先使用已有分类名\n\n邮件：\n';
-  details.forEach(function(e,i){prompt+='【'+(i+1)+'】ID:'+e.id+'\n发件人:'+e.from+'\n主题:'+e.subject+'\n内容:'+e.snippet+' '+e.body.substring(0,500)+'\n\n'});
+  var auto={},needAI=[];
+  details.forEach(function(e){
+    var cat=classifyByLabel(e.labelIds)||classifyByKeywords(e.subject,e.from);
+    if(cat){auto[e.id]=cat}else{needAI.push(e)}
+  });
+
+  for(var id in auto){if(!S.categories[id])S.categories[id]=auto[id]}
+  var newCats={};for(var id in auto){var c=auto[id];if(USER_CATS.indexOf(c)<0)newCats[c]=true}
+
+  if(needAI.length===0){
+    for(var c in newCats){USER_CATS.push(c)}
+    saveUserCats();localStorage.setItem('mm_cats',JSON.stringify(S.categories));
+    showToast('已分类 '+details.length+' 封（按标签/关键词）');S.classifying=false;fetchEmails();return
+  }
+
+  var cl=USER_CATS.concat(Object.keys(newCats)).join(', ')||'暂无，请从邮件提取';
+  var prompt='你是一个邮件分类器。从每封邮件的主题、发件人、正文中提取品牌/项目名来分类。\n\n规则：\n1. 优先从邮件主题（Subject）中提取品牌关键词（如 Looki、Vocci 等）\n2. 如果没有明确品牌，看发件人域名\n3. 实在无法识别归为 Uncategorized\n4. 已有分类：'+cl+'\n5. 优先使用已有分类名\n\n邮件：\n';
+  needAI.forEach(function(e,i){prompt+='【'+(i+1)+'】ID:'+e.id+'\n发件人:'+e.from+'\n主题:'+e.subject+'\n摘要:'+e.snippet+'\n\n'});
   prompt+='每行格式：邮件ID|分类名\n例如：abc123|Looki\n例如：def456|Uncategorized\n只输出分类，不解释。';
   aiChat(prompt,function(err,reply){
     if(err){showToast('分类失败: '+err,false);S.classifying=false;draw();return}
-    var n=0,nc={};
-    reply.split('\n').forEach(function(line){var m=line.trim().match(/^([a-f0-9]+)\|(.+)$/i);if(m){var cn=m[2].trim();cn=cn.charAt(0).toUpperCase()+cn.slice(1);if(cn.length>0&&cn.length<60&&cn!=='Uncategorized'&&cn!=='Other'){S.categories[m[1]]=cn;if(USER_CATS.indexOf(cn)<0)nc[cn]=true;n++}else if(cn==='Uncategorized'||cn==='Other'){n++}}});
-    var added=[];for(var c in nc){if(USER_CATS.indexOf(c)<0){USER_CATS.push(c);added.push(c)}}
+    var n=0;
+    reply.split('\n').forEach(function(line){
+      var m=line.trim().match(/^([a-f0-9]+)\|(.+)$/i);
+      if(m){var cn=normalizeCat(m[2]);if(cn){S.categories[m[1]]=cn;if(USER_CATS.indexOf(cn)<0&&Object.keys(newCats).indexOf(cn)<0)newCats[cn]=true;n++}}
+    });
+    for(var c in newCats){if(USER_CATS.indexOf(c)<0)USER_CATS.push(c)}
     saveUserCats();localStorage.setItem('mm_cats',JSON.stringify(S.categories));
-    showToast('已分类 '+n+' 封'+(added.length>0?'，新发现: '+added.join(', '):''));S.classifying=false;fetchEmails();
+    showToast('已分类 '+(details.length)+' 封');S.classifying=false;fetchEmails();
   },1024);
 }
 
@@ -352,9 +438,28 @@ function doGenReply(feedback){
   gmailApi('/messages?maxResults=10&labelIds=SENT').then(function(sent){var msgs=(sent.messages||[]).slice(0,5);var done=0;function next(){if(done>=msgs.length){doGenReply2(email,tone,len,lg,inst,samples);return}var m=msgs[done];gmailApi('/messages/'+m.id+'?format=full').then(function(sd){var bc='';if(sd.payload.body&&sd.payload.body.data)bc=atob(sd.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));if(bc&&bc.length>20)samples.push(bc.substring(0,600));done++;next()}).catch(function(){done++;next()})}next()}).catch(function(){doGenReply2(email,tone,len,lg,inst,[])})}
 function doGenReply2(email,tone,len,lg,inst,samples){
   var from=parseFrom(email.from);
+  var snippetId=($q('.ai-sel.snippet')||{}).value||'';
+  var snippet=snippetId?getSnippetById(snippetId):null;
+  var extra=inst?inst:'';
+  if(snippet){extra=(extra?extra+'\n':'')+'【必须使用的信息】\n'+snippet.content}
   var sc='';if(samples.length>0){sc='\n\n=== 我之前的邮件（模仿风格）===\n';samples.forEach(function(s,i){sc+='\n邮件'+(i+1)+'（我写的）：\n'+s})}
-  var prompt='帮我起草回复。\n\n原邮件：\n发件人：'+from.name+'\n主题：'+email.subject+'\n正文：\n'+email.body.substring(0,3000)+sc+'\n\n要求：语气'+tone+'，长度'+(lg[len]||'1-2段')+'。'+(inst?'额外：'+inst+'\n':'')+(samples.length?'模仿我邮件的问候、签名、句式、标点习惯。':'')+'\n只输出回复正文。';
-  aiChat(prompt,function(err,draft){S.aiState='done';S._aiDraft=err?('失败: '+err):draft;var replyTo=from.email;var replySub=email.subject.toLowerCase().indexOf('re:')===0?email.subject:'Re: '+email.subject;S._aiMeta={replyTo:replyTo,replySub:replySub};draw()},2048);
+  var prompt='帮我起草英文回复邮件，并附带中文翻译。\n\n原邮件：\n发件人：'+from.name+'\n主题：'+email.subject+'\n正文：\n'+email.body.substring(0,3000)+sc+'\n\n要求：语气'+tone+'，长度'+(lg[len]||'1-2段')+'。'+(extra?'额外要求：'+extra+'\n':'')+(samples.length?'模仿我邮件的问候、签名、句式、标点习惯。':'')+'\n\n输出格式必须严格如下（不要改变标签）：\n[ENGLISH]\n（英文回复正文）\n[/ENGLISH]\n[CHINESE]\n（中文翻译/中文意思）\n[/CHINESE]';
+  aiChat(prompt,function(err,reply){
+    S.aiState='done';
+    if(err){S._aiDraft='失败: '+err;S._aiDraftCn='';}
+    else{
+      var enMatch=reply.match(/\[ENGLISH\]([\s\S]*?)\[\/ENGLISH\]/i);
+      var cnMatch=reply.match(/\[CHINESE\]([\s\S]*?)\[\/CHINESE\]/i);
+      S._aiDraft=enMatch?enMatch[1].trim():reply;
+      S._aiDraftCn=cnMatch?cnMatch[1].trim():'';
+      if(!S._aiDraftCn){
+        // fallback: try to translate the English draft separately
+        aiChat('把以下英文邮件翻译成中文，保留格式：\n\n'+S._aiDraft,function(err2,cn){S._aiDraftCn=err2?'':cn;draw()},1024);
+      }
+    }
+    var replyTo=from.email;var replySub=email.subject.toLowerCase().indexOf('re:')===0?email.subject:'Re: '+email.subject;S._aiMeta={replyTo:replyTo,replySub:replySub,snippetUsed:!!snippet};
+    draw();
+  },2048);
 }
 
 function doSendReply(){
@@ -397,6 +502,18 @@ function doLogout(){S.token=null;S.tokObj=null;S.user=null;S.emails=[];S.selId=n
 function resetAllData(){if(!confirm('清空所有分类？'))return;USER_CATS=[];S.categories={};localStorage.setItem('mm_usercats','[]');localStorage.setItem('mm_cats','{}');S.cat='all';showToast('已清除');fetchEmails()}
 function addCategory(){var n=prompt('输入新分类名：');if(n&&n.trim()){var nn=n.trim();if(USER_CATS.indexOf(nn)>=0){showToast('已存在',false);return}USER_CATS.push(nn);saveUserCats();showToast('已添加: '+nn);draw()}}
 function changeEmailCategory(id){var opts=USER_CATS.slice();var lst='选一个或输入新分类：\n0. 取消分类\n';opts.forEach(function(c,i){lst+=(i+1)+'. '+c+'\n'});var inp=prompt(lst);if(!inp)return;var idx=parseInt(inp);if(!isNaN(idx)&&idx===0){delete S.categories[id]}else if(!isNaN(idx)&&idx>=1&&idx<=opts.length){S.categories[id]=opts[idx-1]}else{S.categories[id]=inp.trim();if(USER_CATS.indexOf(inp.trim())<0){USER_CATS.push(inp.trim());saveUserCats()}}localStorage.setItem('mm_cats',JSON.stringify(S.categories));showToast('已更新');fetchEmails()}
+
+function openSnippetManager(){
+  var html='<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:100;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeModal()"><div style="background:var(--surf);border-radius:16px;padding:28px;max-width:520px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 8px 30px rgba(0,0,0,.12);border:1px solid var(--border)"><h3 style="margin-bottom:16px;font-family:var(--fontD)">自定义回复模板</h3><p style="font-size:.76rem;color:var(--t3);margin-bottom:16px">生成 AI 回复时，选中的模板内容会被作为“必须使用的信息”告诉 AI。</p><div id="snipList">';
+  USER_SNIPPETS.forEach(function(s,i){html+='<div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><input value="'+s.name+'" onchange="updateSnippetName('+i+',this.value)" style="font-weight:600;border:none;background:transparent;padding:0;flex:1"><button class="btn btn-gh btn-sm" onclick="deleteSnippet('+i+')">删除</button></div><textarea onchange="updateSnippetContent('+i+',this.value)" style="width:100%;min-height:80px;padding:10px;border:1px solid var(--borderS);border-radius:6px;font-size:.8rem;line-height:1.6">'+s.content+'</textarea></div>'});
+  html+='</div><button class="btn btn-s" style="width:100%;margin-top:8px" onclick="addSnippet()">＋ 添加模板</button><button class="btn btn-accent" style="width:100%;margin-top:10px" onclick="closeModal();draw()">完成</button></div></div>';
+  var m=document.createElement('div');m.id='snippetModal';m.innerHTML=html;document.body.appendChild(m);
+}
+function closeModal(){var m=document.getElementById('snippetModal');if(m)m.remove()}
+function addSnippet(){var name=prompt('模板名称（如：Brief链接）：');if(!name)return;var id='snip_'+Date.now();USER_SNIPPETS.push({id:id,name:name.trim(),content:''});saveSnippets();closeModal();openSnippetManager()}
+function deleteSnippet(i){if(!confirm('删除这个模板？'))return;USER_SNIPPETS.splice(i,1);saveSnippets();var m=document.getElementById('snippetModal');if(m){m.innerHTML='';closeModal();openSnippetManager()}}
+function updateSnippetName(i,v){USER_SNIPPETS[i].name=v.trim();saveSnippets()}
+function updateSnippetContent(i,v){USER_SNIPPETS[i].content=v;saveSnippets()}
 
 // === RENDER ===
 function draw(){
@@ -486,8 +603,10 @@ function drawAiSection(){
   var rInfo='回复全部：<b>'+replyTo+'</b>'+ccInf+' &nbsp;|&nbsp; 主题：<b>'+replySub+'</b>';
   var html='<div class="ai-section"><div class="ai-section-title">🤖 AI 智能回复 <span style="font-size:.7rem;color:var(--t3);font-weight:400">（Reply All）</span></div>';
   if(S.aiState==='generating'){html+='<div class="ai-load"><div class="ai-dots"><span></span><span></span><span></span></div>起草中...'+(S._genFeedback?' 改进：'+S._genFeedback:'')+'</div>'}
-  else if(S.aiState==='done'){html+='<div class="ai-reply-info">'+rInfo+'</div><textarea class="ai-ta" id="aiReplyArea">'+(S._aiDraft||'')+'</textarea><div style="margin-bottom:8px"><input id="feedbackInput" class="ai-instructions" placeholder="不满意?写改进意见后点重生成..." style="margin-bottom:0"></div><div class="ai-acts"><div class="ai-acts-left"><button class="btn btn-gh btn-sm" onclick="document.getElementById(\'aiReplyArea\').value=\'\'">清空</button><button class="btn btn-gh btn-sm" onclick="S.aiState=\'idle\';S._aiDraft=null;draw()">放弃</button><button class="btn btn-s btn-sm" onclick="var fb=document.getElementById(\'feedbackInput\');doGenReply(fb?fb.value:\'\')">重生成</button></div><button class="btn btn-accent btn-sm" onclick="doSendReply()">回复全部</button></div>'}
-  else{html+='<div class="ai-ctrls"><select class="ai-sel tone"><option value="professional">专业</option><option value="casual">随意</option><option value="friendly">友好</option><option value="formal">正式</option><option value="concise">简洁</option></select><select class="ai-sel length"><option value="short">简短</option><option value="medium" selected>中等</option><option value="long">详细</option></select></div><input class="ai-instructions" placeholder="额外要求：如"用中文回复""强调明天下��3点开会"..."><button class="btn btn-accent" style="width:100%;justify-content:center;padding:14px;font-size:.9rem" onclick="doGenReply()">⚡ 生成回复（AI 模仿我的风格）</button>'}
+  else if(S.aiState==='done'){html+='<div class="ai-reply-info">'+rInfo+'</div><textarea class="ai-ta" id="aiReplyArea">'+(S._aiDraft||'')+'</textarea>'+(S._aiDraftCn?'<div class="translate-block" style="margin-bottom:12px"><div class="trans-label">🌐 中文对照</div><div class="trans-text">'+S._aiDraftCn+'</div></div>':'')+'<div style="margin-bottom:8px"><input id="feedbackInput" class="ai-instructions" placeholder="不满意?写改进意见后点重生成..." style="margin-bottom:0"></div><div class="ai-acts"><div class="ai-acts-left"><button class="btn btn-gh btn-sm" onclick="document.getElementById(\'aiReplyArea\').value=\'\'">清空</button><button class="btn btn-gh btn-sm" onclick="S.aiState=\'idle\';S._aiDraft=null;S._aiDraftCn=\'\';draw()">放弃</button><button class="btn btn-s btn-sm" onclick="var fb=document.getElementById(\'feedbackInput\');doGenReply(fb?fb.value:\'\')">重生成</button></div><button class="btn btn-accent btn-sm" onclick="doSendReply()">回复全部</button></div>'}
+  else{
+    var snippetOpts='<option value="">不使用模板</option>'+USER_SNIPPETS.map(function(s){return '<option value="'+s.id+'">'+s.name+'</option>'}).join('');
+    html+='<div class="ai-ctrls"><select class="ai-sel tone"><option value="professional">专业</option><option value="casual">随意</option><option value="friendly">友好</option><option value="formal">正式</option><option value="concise">简洁</option></select><select class="ai-sel length"><option value="short">简短</option><option value="medium" selected>中等</option><option value="long">详细</option></select><select class="ai-sel snippet">'+snippetOpts+'</select><button class="btn btn-gh btn-sm" onclick="openSnippetManager()">管理模板</button></div><input class="ai-instructions" placeholder="额外要求：如“用中文回复”“强调明天下��3点开会”..."><button class="btn btn-accent" style="width:100%;justify-content:center;padding:14px;font-size:.9rem" onclick="doGenReply()">⚡ 生成回复（AI 模仿我的风格）</button>'}
   return html+'</div>';
 }
 
