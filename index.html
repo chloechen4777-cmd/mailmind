@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MailMind — AI 邮件助手</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#FBFBF9;--surf:#FFF;--hover:#F5F5F2;--side:#1A1A1A;--t1:#1A1A1A;--t2:#6B6B6B;--t3:#9CA3AF;--tside:#E5E5E5;--tsidem:#8A8A8A;--accent:#2563EB;--accentL:#EFF6FF;--border:#EBEBE6;--borderS:#D5D5D0;--r:10px;--fontD:'Playfair Display',Georgia,serif;--fontB:'Inter',-apple-system,sans-serif}
+body{font-family:var(--fontB);background:var(--bg);color:var(--t1);line-height:1.6;min-height:100vh;overflow-x:hidden}
+button{cursor:pointer;border:none;background:none;font-family:inherit;font-size:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;outline:none}
+
+.layout{display:flex;min-height:100vh}
+.sidebar{width:220px;background:var(--side);color:var(--tside);display:flex;flex-direction:column;position:fixed;top:0;left:0;bottom:0;z-index:10}
+.side-logo{padding:24px 20px 16px;font-family:var(--fontD);font-size:1.5rem;font-weight:700;font-style:italic;color:#FFF;border-bottom:1px solid rgba(255,255,255,.08)}
+.side-logo em{font-style:italic;color:#60A5FA}
+.side-nav{flex:1;padding:8px 10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:6px;color:var(--tsidem);font-size:.8rem;font-weight:500;width:100%;text-align:left}
+.nav-item:hover{background:rgba(255,255,255,.08);color:var(--tside)}
+.nav-item.on{background:rgba(255,255,255,.1);color:#FFF}
+.nav-item .badge{margin-left:auto;font-size:.7rem;background:rgba(255,255,255,.12);padding:2px 8px;border-radius:10px}
+.side-foot{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px}
+.side-av{width:30px;height:30px;border-radius:50%;background:#374151;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:600;color:#E5E5E5;overflow:hidden;flex-shrink:0}
+.side-av img{width:100%;height:100%;object-fit:cover}
+.side-info{flex:1;min-width:0}
+.side-name{font-size:.78rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-email{font-size:.68rem;color:var(--tsidem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.main{flex:1;margin-left:220px;display:flex;flex-direction:column;min-height:100vh;max-width:calc(100vw - 220px)}
+.topbar{padding:18px 28px;background:var(--surf);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+.topbar h2{font-family:var(--fontD);font-size:1.2rem;font-weight:600}
+.topbar-actions{display:flex;gap:10px}
+
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:6px;font-size:.82rem;font-weight:500;transition:all .15s;white-space:nowrap}
+.btn-p{background:var(--t1);color:#FFF}.btn-p:hover{background:#333}.btn-p:disabled{background:#999;cursor:not-allowed}
+.btn-s{background:var(--surf);color:var(--t1);border:1px solid var(--borderS)}.btn-s:hover{background:var(--hover)}
+.btn-gh{color:var(--t2);padding:7px 10px}.btn-gh:hover{background:var(--hover);color:var(--t1)}
+.btn-sm{padding:6px 12px;font-size:.76rem}
+.btn-accent{background:var(--accent);color:#FFF}.btn-accent:hover{background:#1d4ed8}
+
+.content{flex:1;display:flex;overflow:hidden;padding:0;position:relative}
+.email-list-panel{flex:1;display:flex;flex-direction:column;overflow-y:auto;padding:16px 20px;min-width:0}
+.email-list-panel.has-detail{flex:0 0 380px;border-right:1px solid var(--border);max-width:380px}
+.email-list{display:flex;flex-direction:column;gap:4px}
+.email-row{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;background:var(--surf);border:1px solid transparent;border-radius:8px;cursor:pointer;transition:all .12s;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.email-row:hover{border-color:var(--border);box-shadow:0 4px 12px rgba(0,0,0,.06)}
+.email-row.sel{border-color:var(--accent);background:var(--accentL)}
+.email-row.unread{font-weight:600}
+.email-body{flex:1;min-width:0}
+.email-from{font-size:.82rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.email-row.unread .email-from{font-weight:600}
+.email-sub{font-size:.78rem;color:var(--t2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:2px 0}
+.email-snip{font-size:.74rem;color:var(--t3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.email-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0}
+.email-date{font-size:.7rem;color:var(--t3);white-space:nowrap}
+.cat{display:inline-flex;padding:2px 8px;border-radius:10px;font-size:.66rem;font-weight:500;text-transform:capitalize}
+.cat.work{background:#E8F0FE;color:#1E40AF}.cat.personal{background:#FCE8E6;color:#C62828}.cat.finance{background:#E6F4EA;color:#137333}.cat.newsletter{background:#F3E8FD;color:#7C3AED}.cat.social{background:#FFF3E0;color:#E65100}.cat.urgent{background:#FCE4EC;color:#C62828;font-weight:700}.cat.other{background:#F1F3F4;color:#5F6368}
+
+.detail-panel{flex:1;display:flex;flex-direction:column;background:var(--surf);overflow:hidden;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.detail-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.detail-scroll{flex:1;overflow-y:auto;padding:20px 28px 40px}
+.detail-sub{font-family:var(--fontD);font-size:1.15rem;font-weight:600;margin-bottom:16px;line-height:1.4}
+.detail-meta{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:20px;padding-bottom:18px;border-bottom:1px solid var(--border);font-size:.8rem}
+.detail-meta-item{display:flex;align-items:baseline;gap:4px}
+.detail-meta-item .lbl{color:var(--t3);font-weight:500}
+.detail-meta-item .val{color:var(--t1)}
+.detail-body{font-size:.88rem;line-height:1.85;color:var(--t1);white-space:pre-wrap;word-break:break-word}
+.detail-body a{color:var(--accent)}
+.translate-block{margin-top:16px;padding-top:16px;border-top:1px dashed var(--border)}.translate-block .trans-label{font-size:.75rem;color:var(--accent);font-weight:600;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}.translate-block .trans-text{font-size:.88rem;line-height:1.85;color:var(--t1);white-space:pre-wrap}.trans-original{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}.trans-original .orig-label{font-size:.72rem;color:var(--t3);font-weight:500;margin-bottom:6px}.trans-original .orig-text{font-size:.82rem;line-height:1.7;color:var(--t2);white-space:pre-wrap;max-height:300px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:6px}
+
+.ai-section{margin-top:28px;padding-top:24px;border-top:2px solid var(--border)}
+.ai-section-title{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-family:var(--fontD);font-size:1.05rem;font-weight:600}
+.ai-ctrls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.ai-sel{padding:7px 12px;border:1px solid var(--borderS);border-radius:6px;background:var(--surf);color:var(--t1);font-size:.78rem}
+.ai-instructions{width:100%;padding:7px 12px;border:1px solid var(--borderS);border-radius:6px;background:var(--surf);color:var(--t2);font-size:.76rem;margin-bottom:12px}
+.ai-ta{width:100%;min-height:200px;padding:16px;border:1px solid var(--borderS);border-radius:10px;font-size:.84rem;line-height:1.8;resize:vertical;margin-bottom:12px}
+.ai-ta:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.ai-reply-info{font-size:.76rem;color:var(--t3);margin-bottom:8px}
+.ai-acts{display:flex;align-items:center;justify-content:space-between}
+.ai-acts-left{display:flex;gap:8px}
+.ai-load{display:flex;align-items:center;gap:10px;padding:30px;color:var(--t2);font-size:.85rem}
+.ai-dots{display:flex;gap:4px}.ai-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:dot 1.4s infinite ease-in-out both}.ai-dots span:nth-child(1){animation-delay:-.32s}.ai-dots span:nth-child(2){animation-delay:-.16s}
+@keyframes dot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
+
+.login-page{display:flex;min-height:100vh;align-items:center;justify-content:center;background:var(--bg)}
+.login-card{background:var(--surf);border-radius:16px;padding:40px;max-width:460px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,.08);border:1px solid var(--border)}
+.login-card h1{font-family:var(--fontD);font-size:1.9rem;font-weight:700;font-style:italic;margin-bottom:6px;text-align:center}
+.login-card h1 em{font-style:italic;color:var(--accent)}
+.setup-step{margin-bottom:20px}
+.setup-step label{display:block;font-size:.78rem;font-weight:500;color:var(--t2);margin-bottom:4px}
+.setup-step input{width:100%;padding:10px 12px;border:1px solid var(--borderS);border-radius:6px;font-size:.84rem;color:var(--t1);background:var(--surf)}
+.setup-step input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(37,99,235,.1)}
+.setup-step .hint{font-size:.7rem;color:var(--t3);margin-top:3px}
+.login-foot{margin-top:20px;font-size:.7rem;color:var(--t3);line-height:1.6;text-align:center}
+
+.summary{background:linear-gradient(135deg,#EFF6FF,#F0F9FF);border:1px solid #BFDBFE;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:.82rem;line-height:1.6}
+.summary-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.summary-hd span{font-family:var(--fontD);font-weight:600;font-size:.85rem;color:#1E40AF}
+
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 30px;text-align:center;color:var(--t3)}
+.empty h3{font-family:var(--fontD);font-size:1.15rem;color:var(--t2);margin:16px 0 4px}
+.empty p{font-size:.85rem;margin-bottom:16px;max-width:340px}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);padding:12px 24px;color:#FFF;border-radius:8px;font-size:.82rem;font-weight:500;box-shadow:0 8px 30px rgba(0,0,0,.2);z-index:999;animation:toastIn .3s}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+.toast.ok{background:#059669}.toast.err{background:#DC2626}
+
+.spin-box{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:14px;color:var(--t2);font-size:.85rem}
+.spin{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+::-webkit-scrollbar{width:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--borderS);border-radius:3px}
+
+.meta-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.meta-lbl{color:var(--t3);min-width:50px;font-weight:500;font-size:.8rem}
+.meta-val{color:var(--t1);font-size:.82rem}
+
+@media(max-width:900px){.sidebar{display:none}.main{margin-left:0;max-width:100vw}.email-list-panel.has-detail{flex:0 0 100%;max-width:100%}.detail-panel{position:fixed;top:0;right:0;width:100%;z-index:20;height:100vh}}
+</style>
+</head>
+<body><div id="app"></div>
+<script>
+// === CONFIG (from localStorage) ===
+function getConfig(){
+  return {
+    aiKey: localStorage.getItem('mm_aiKey')||'',
+    aiBase: localStorage.getItem('mm_aiBase')||'https://api.sandboxcrew.ai/v1',
+    aiModel: localStorage.getItem('mm_aiModel')||'deepseek-v4-pro',
+    gClientId: localStorage.getItem('mm_gClientId')||'',
+  };
+}
+
+var USER_CATS=[];
+
+function loadUserCats(){
+  var s=localStorage.getItem('mm_usercats');
+  if(s)try{USER_CATS=JSON.parse(s)}catch(e){USER_CATS=[]}
+  var old=['work','personal','finance','newsletter','social','urgent','other','紧急','工作','个人','财务','订阅','社交'];
+  USER_CATS=USER_CATS.filter(function(c){return old.indexOf(c)<0});
+  if(USER_CATS.length===0)USER_CATS=[];
+  var cd=localStorage.getItem('mm_cats');
+  if(cd)try{var cats=JSON.parse(cd);var cl={};for(var id in cats){if(old.indexOf(cats[id])<0)cl[id]=cats[id];}localStorage.setItem('mm_cats',JSON.stringify(cl))}catch(e){}
+  saveUserCats();
+}
+function saveUserCats(){localStorage.setItem('mm_usercats',JSON.stringify(USER_CATS))}
+function getCatList(){
+  var l=[{id:'all',label:'全部',icon:'📥'},{id:'_uncategorized',label:'未分类',icon:'📋'}];
+  USER_CATS.forEach(function(n){l.push({id:n,label:n,icon:'📌'})});
+  return l;
+}
+loadUserCats();
+
+var S={
+  token:null,tokObj:null,user:null,
+  emails:[],selId:null,selDetail:null,
+  cat:'all',categories:{},
+  classifying:false,loading:false,summary:null,
+  aiState:'idle',translateState:'idle',translation:null,
+  _showFull:false,
+};
+
+function $q(s){return document.querySelector(s)}
+function $id(s){return document.getElementById(s)}
+function fmtDate(d){
+  if(!d)return'';try{var dt=new Date(d),now=new Date();var df=Math.floor((now-dt)/60000);if(df<1)return'刚刚';if(df<60)return df+'分前';if(df<1440)return Math.floor(df/60)+'时前';return dt.toLocaleDateString('zh-CN',{month:'short',day:'numeric'})}catch(e){return d}
+}
+function parseFrom(f){var m=f.match(/^"?([^"]*)"?\s*<([^>]+)>$/);return m?{name:m[1],email:m[2]}:{name:f.replace(/<[^>]+>/,'').replace(/"/g,'').trim(),email:f}}
+function showToast(msg,ok){var t=document.createElement('div');t.className='toast '+(ok===false?'err':'ok');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove()},3000)}
+
+function gmailApi(path,opts){
+  opts=opts||{};
+  return fetch('https://gmail.googleapis.com/gmail/v1/users/me'+path,{
+    method:opts.method||'GET',
+    headers:Object.assign({'Authorization':'Bearer '+S.token,'Content-Type':'application/json'},opts.headers),
+    body:opts.body,
+  }).then(function(r){
+    if(r.status===401){doLogin(true);throw new Error('Token expired')}
+    if(!r.ok)return r.text().then(function(t){throw new Error(t.substring(0,200))});
+    return r.json();
+  });
+}
+
+function batchFetch(items,bsz,worker,onP,onD){
+  bsz=bsz||8;var res=[],done=0,total=items.length;
+  function run(start){
+    if(start>=total){onD(res);return}
+    var batch=items.slice(start,start+bsz);
+    var ps=batch.map(function(item,i){
+      return worker(item).then(function(r){res[start+i]=r;done++;if(onP)onP(done,total)}).catch(function(e){console.error(e);done++;if(onP)onP(done,total)})
+    });
+    Promise.all(ps).then(function(){run(start+bsz)});
+  }
+  run(0);
+}
+
+function extractLatest(body){
+  if(!body||body.length<10)return body;
+  var lines=body.split('\n'),result=[],inQ=false;
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i].trim();
+    if(l.match(/^>/)||l.match(/^(On\s|在\s).*[写w]道/)||l.match(/^-{3,}\s*(Original Message|原始邮件|Forwarded|转发)/i)||l.match(/^From:\s/)||l.match(/^\d{4}[-/]\d{2}[-/]\d{2}\s+\d{2}:\d{2}/)||l.match(/^Sent:\s/i)||l.match(/^Subject:\s/i)||l.match(/^To:\s.*wrote:/i)){inQ=true;if(result.filter(function(ll){return ll.trim().length>0}).length>3)break;continue}
+    if(l.match(/^[─━●◆]/))continue;
+    if(!inQ&&l.length>0)result.push(lines[i]);
+  }
+  var out=result.join('\n').trim();
+  return (out&&out.length>=5)?out:body;
+}
+
+function toggleFullBody(){
+  if(!S.selDetail)return;
+  S._showFull=!S._showFull;
+  S.selDetail.body=S._showFull?S.selDetail.fullBody:S.selDetail.latestBody;
+  var se=document.querySelector('.detail-scroll');draw();if(se)setTimeout(function(){se.scrollTop=0},50);
+}
+
+function fetchEmails(){
+  S.loading=true;S._loadCount=0;S._loadTotal=0;S.emails=[];draw();
+  gmailApi('/messages?maxResults=50&labelIds=INBOX').then(function(result){
+    var msgs=result.messages||[];
+    if(msgs.length===0){S.emails=[];S.loading=false;draw();return}
+    S._loadTotal=msgs.length;S._loadCount=0;draw();
+    var all=[];
+    batchFetch(msgs,10,function(m){
+      return gmailApi('/messages/'+m.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date').then(function(d){
+        var hd=d.payload.headers||[];
+        function gh(n){var h=hd.find(function(hh){return hh.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}
+        var from=parseFrom(gh('From'));
+        return{id:m.id,threadId:d.threadId,subject:gh('Subject')||'(无主题)',from:from.name||from.email,fromEmail:from.email,date:gh('Date'),snippet:d.snippet||'',isUnread:(d.labelIds||[]).indexOf('UNREAD')>=0,category:S.categories[m.id]||null};
+      });
+    },function(d,t){S._loadCount=d;draw()},function(results){
+      all=results.filter(function(r){return r});
+      if(S.cat==='all')S.emails=all;
+      else if(S.cat==='_uncategorized')S.emails=all.filter(function(e){return!e.category});
+      else S.emails=all.filter(function(e){return e.category===S.cat});
+      S.loading=false;S._loadCount=0;S._loadTotal=0;draw();
+    });
+  }).catch(function(e){console.error(e);showToast('获取邮件失败',false);S.loading=false;draw()});
+}
+
+function fetchDetail(id){
+  S.selId=id;S.selDetail=null;S._showFull=false;S.translation=null;S.translateState='idle';draw();
+  gmailApi('/messages/'+id+'?format=full').then(function(d){
+    var hd=d.payload.headers||[];
+    function gh(n){var h=hd.find(function(h){return h.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}
+    var body='',p=d.payload;
+    function db64(data){try{return decodeURIComponent(escape(atob(data.replace(/-/g,'+').replace(/_/g,'/'))))}catch(e){return atob(data.replace(/-/g,'+').replace(/_/g,'/'))}}
+    if(p.body&&p.body.data)body=db64(p.body.data);
+    else if(p.parts){for(var i=0;i<p.parts.length;i++){if(p.parts[i].mimeType==='text/plain'&&p.parts[i].body&&p.parts[i].body.data){body=db64(p.parts[i].body.data);break}}if(!body)for(var j=0;j<p.parts.length;j++){if(p.parts[j].mimeType==='text/html'&&p.parts[j].body&&p.parts[j].body.data){var html=db64(p.parts[j].body.data);body=html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\n\s*\n/g,'\n').trim();break}}}
+    var lb=extractLatest(body);
+    S.selDetail={id:d.id,threadId:d.threadId,subject:gh('Subject'),from:gh('From'),to:gh('To'),cc:gh('Cc'),date:gh('Date'),messageId:gh('Message-ID'),fullBody:body,latestBody:lb,body:lb,labelIds:d.labelIds||[],category:S.categories[id]||null};
+    draw();
+  }).catch(function(e){console.error(e);showToast('加载失败',false);S.selId=null;S.selDetail=null;draw()});
+}
+
+// AI — 智能多路径请求（同域代理 → CORS代理 → 直连）
+function aiChat(prompt,cb,maxTok){
+  maxTok=maxTok||1024;
+  var cfg=getConfig();
+  var body=JSON.stringify({model:cfg.aiModel,messages:[{role:'user',content:prompt}],max_tokens:maxTok,temperature:0.3});
+  var baseUrl=(cfg.aiBase||'https://api.sandboxcrew.ai/v1').replace(/\/+$/,'');
+  var apiUrl=baseUrl+'/chat/completions';
+  var key=cfg.aiKey;if(key&&!key.toLowerCase().startsWith('bearer '))key='Bearer '+key;
+
+  function tryFetch(url,hd,label){
+    return fetch(url,{method:'POST',headers:hd,body:body}).then(function(r){
+      if(!r.ok){return r.json().then(function(d){throw new Error(d.error&&d.error.message?d.error.message:(d.error||label+' HTTP '+r.status))}).catch(function(){throw new Error(label+' HTTP '+r.status)})}
+      return r.json();
+    });
+  }
+
+  function handleResult(d){cb(null,(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||(d.content||''))}
+
+  var hd={'Content-Type':'application/json','Authorization':key};
+
+  // 路径1: 同域 /api/ai（Vercel/Netlify Serverless）
+  tryFetch('/api/ai',{'Content-Type':'application/json','X-AI-Key':cfg.aiKey,'X-AI-Base':cfg.aiBase||'https://api.sandboxcrew.ai/v1'},'Vercel')
+  .then(handleResult)
+  .catch(function(e1){
+    console.log('同域代理失败: '+e1.message+', 尝试直连...');
+    // 路径2: 直连（支持CORS的API）
+    tryFetch(apiUrl,hd,'Direct')
+    .then(handleResult)
+    .catch(function(e2){
+      console.log('直连失败: '+e2.message+', 尝试CORS代理...');
+      // 路径3: corsproxy.io（支持POST的免费CORS代理）
+      var proxyUrl='https://corsproxy.io/?'+encodeURIComponent(apiUrl);
+      tryFetch(proxyUrl,Object.assign({},hd,{'x-corsproxy-api':'true'}),'CORSProxy')
+      .then(handleResult)
+      .catch(function(e3){
+        cb('AI 请求失败 (所有路径):\n→ 同域代理: '+e1.message.substring(0,50)+'\n→ 直连: '+e2.message.substring(0,50)+'\n→ CORS代理: '+e3.message.substring(0,50));
+      });
+    });
+  });
+}
+
+function doClassify(){
+  S.classifying=true;S._loadTotal=0;S._loadCount=0;draw();
+  gmailApi('/messages?maxResults=30&labelIds=INBOX').then(function(all){
+    var msgs=(all.messages||[]).filter(function(m){return!S.categories[m.id]}).slice(0,20);
+    if(msgs.length===0){showToast('全部已分类完毕');S.classifying=false;draw();return}
+    S._loadTotal=msgs.length;S._loadCount=0;draw();
+    var details=[];
+    batchFetch(msgs,10,function(m){return gmailApi('/messages/'+m.id+'?format=full').then(function(d){var hd=d.payload.headers||[];function gh(n){var h=hd.find(function(h){return h.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}var bc='';if(d.payload.body&&d.payload.body.data)bc=atob(d.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));return{id:m.id,subject:gh('Subject'),from:gh('From'),snippet:d.snippet||'',body:bc}})},function(d,t){S._loadCount=d;draw()},function(results){doClassify2(results.filter(function(r){return r}))})}).catch(function(e){console.error(e);showToast('获取失败',false);S.classifying=false;draw()});
+}
+function doClassify2(details){
+  if(details.length===0){S.classifying=false;draw();return}
+  var cl=USER_CATS.join(', ');
+  var prompt='你是一个邮件分类器。从每封邮件的主题、发件人、正文中提取品牌/项目名来分类。\n\n规则：\n1. 优先从邮件主题（Subject）中提取品牌关键词\n2. 如果没有明确品牌，看发件人域名\n3. 实在无法识别归为 Uncategorized\n4. 已有分类：'+(cl||'暂无，请自行从邮件提取')+'\n5. 优先使用已有分类名\n\n邮件：\n';
+  details.forEach(function(e,i){prompt+='【'+(i+1)+'】ID:'+e.id+'\n发件人:'+e.from+'\n主题:'+e.subject+'\n内容:'+e.snippet+' '+e.body.substring(0,500)+'\n\n'});
+  prompt+='每行格式：邮件ID|分类名\n例如：abc123|Looki\n例如：def456|Uncategorized\n只输出分类，不解释。';
+  aiChat(prompt,function(err,reply){
+    if(err){showToast('分类失败: '+err,false);S.classifying=false;draw();return}
+    var n=0,nc={};
+    reply.split('\n').forEach(function(line){var m=line.trim().match(/^([a-f0-9]+)\|(.+)$/i);if(m){var cn=m[2].trim();cn=cn.charAt(0).toUpperCase()+cn.slice(1);if(cn.length>0&&cn.length<60&&cn!=='Uncategorized'&&cn!=='Other'){S.categories[m[1]]=cn;if(USER_CATS.indexOf(cn)<0)nc[cn]=true;n++}else if(cn==='Uncategorized'||cn==='Other'){n++}}});
+    var added=[];for(var c in nc){if(USER_CATS.indexOf(c)<0){USER_CATS.push(c);added.push(c)}}
+    saveUserCats();localStorage.setItem('mm_cats',JSON.stringify(S.categories));
+    showToast('已分类 '+n+' 封'+(added.length>0?'，新发现: '+added.join(', '):''));S.classifying=false;fetchEmails();
+  },1024);
+}
+
+function doSummary(){
+  S.summary='⏳ 正在生成...';draw();
+  gmailApi('/messages?maxResults=20&labelIds=INBOX&q=newer_than:1d').then(function(data){var msgs=data.messages||[];if(msgs.length===0){S.summary='今天没有新邮件。';draw();return}var dl=[],done=0;function next(){if(done>=Math.min(msgs.length,15)){doSummary2(dl);return}var m=msgs[done];gmailApi('/messages/'+m.id+'?format=metadata&metadataHeaders=From&metadataHeaders=Subject').then(function(d){var hd=d.payload.headers||[];function gh(n){var h=hd.find(function(hh){return hh.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}dl.push(gh('From')+': '+gh('Subject'));done++;next()}).catch(function(){done++;next()})}next()}).catch(function(e){S.summary='获取失败: '+e.message;draw()});
+}
+function doSummary2(dl){aiChat('用中文总结今天这'+dl.length+'封邮件，按品牌/项目分组，2-3句，标出需回复的。\n\n'+dl.join('\n'),function(err,reply){S.summary=err?'失败: '+err:reply;draw()},512)}
+
+function doGenReply(feedback){
+  if(!S.selDetail)return;S.aiState='generating';S._genFeedback=feedback||'';draw();
+  var email=S.selDetail;
+  var tone=($q('.ai-sel.tone')||{}).value||'professional';
+  var len=($q('.ai-sel.length')||{}).value||'medium';
+  var instEl=$q('.ai-instructions');
+  var inst=(instEl?instEl.value:'')||(S._genFeedback||'');
+  var lg={short:'2-4句',medium:'1-2段',long:'3-4段'};
+  if(S._aiDraft&&S._aiDraft.indexOf('生成失败')!==0&&feedback){inst=(inst||'')+'（上次不满意：'+feedback+'。请改进。）'}
+  var samples=[];
+  gmailApi('/messages?maxResults=10&labelIds=SENT').then(function(sent){var msgs=(sent.messages||[]).slice(0,5);var done=0;function next(){if(done>=msgs.length){doGenReply2(email,tone,len,lg,inst,samples);return}var m=msgs[done];gmailApi('/messages/'+m.id+'?format=full').then(function(sd){var bc='';if(sd.payload.body&&sd.payload.body.data)bc=atob(sd.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));if(bc&&bc.length>20)samples.push(bc.substring(0,600));done++;next()}).catch(function(){done++;next()})}next()}).catch(function(){doGenReply2(email,tone,len,lg,inst,[])})}
+function doGenReply2(email,tone,len,lg,inst,samples){
+  var from=parseFrom(email.from);
+  var sc='';if(samples.length>0){sc='\n\n=== 我之前的邮件（模仿风格）===\n';samples.forEach(function(s,i){sc+='\n邮件'+(i+1)+'（我写的）：\n'+s})}
+  var prompt='帮我起草回复。\n\n原邮件：\n发件人：'+from.name+'\n主题：'+email.subject+'\n正文：\n'+email.body.substring(0,3000)+sc+'\n\n要求：语气'+tone+'，长度'+(lg[len]||'1-2段')+'。'+(inst?'额外：'+inst+'\n':'')+(samples.length?'模仿我邮件的问候、签名、句式、标点习惯。':'')+'\n只输出回复正文。';
+  aiChat(prompt,function(err,draft){S.aiState='done';S._aiDraft=err?('失败: '+err):draft;var replyTo=from.email;var replySub=email.subject.toLowerCase().indexOf('re:')===0?email.subject:'Re: '+email.subject;S._aiMeta={replyTo:replyTo,replySub:replySub};draw()},2048);
+}
+
+function doSendReply(){
+  var ta=$q('.ai-ta');if(!ta||!ta.value.trim()||!S._aiMeta)return;
+  var rd=S._aiMeta,e=S.selDetail;
+  var allTo=[];if(e.to)allTo=allTo.concat(e.to.split(',').map(function(s){return s.trim()}).filter(Boolean));if(e.cc)allTo=allTo.concat(e.cc.split(',').map(function(s){return s.trim()}).filter(Boolean));
+  var from=parseFrom(e.from);var myEmail=(S.user.email||'').toLowerCase();
+  allTo=allTo.filter(function(a){var addr=a.match(/<([^>]+)>/)||[a,a];return addr[1].toLowerCase()!==myEmail});
+  var h='To: '+from.email+'\r\n';if(allTo.length>0)h+='Cc: '+allTo.join(', ')+'\r\n';
+  h+='Subject: '+rd.replySub+'\r\n';
+  if(e.messageId){h+='In-Reply-To: '+e.messageId+'\r\n';h+='References: '+e.messageId+'\r\n'}
+  h+='Content-Type: text/plain; charset=UTF-8\r\n\r\n'+ta.value;
+  // Use TextEncoder for proper UTF-8 Base64 encoding (fixes Chinese character bugs)
+  var rawBytes=new TextEncoder().encode(h);
+  var raw=btoa(String.fromCharCode.apply(null,rawBytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  gmailApi('/messages/send',{method:'POST',body:JSON.stringify({raw:raw,threadId:e.threadId})}).then(function(){showToast('已回复全部！');ta.value='';S._aiMeta=null;S._aiDraft=null;S.aiState='idle';draw()}).catch(function(er){showToast('发送失败: '+er.message,false)});
+}
+
+function doTranslate(){
+  if(!S.selDetail)return;var body=S.selDetail.latestBody||S.selDetail.body||'';if(!body||body.length<10){showToast('无可翻译内容',false);return}
+  S.translateState='loading';S.translation=null;draw();
+  aiChat('将以下英文翻译成中文。要求准确自然，保留段落格式，术语和品牌名保持原文。\n\n'+body.substring(0,3000),function(err,r){if(err){S.translation='失败: '+err;S.translateState='error'}else{S.translation=r;S.translateState='done'};draw()},2048);
+}
+
+// Auth
+function doLogin(silent){
+  var cfg=getConfig();if(!cfg.gClientId){showToast('请先设置 Google Client ID',false);return}
+  var ru=window.location.origin+window.location.pathname.replace(/\/+$/,'');if(!ru)ru=window.location.origin;
+  var hash=window.location.hash;
+  if(hash&&hash.indexOf('access_token')>=0){var p={};hash.substring(1).split('&').forEach(function(pr){var pp=pr.split('=');p[pp[0]]=decodeURIComponent(pp[1]||'')});if(p.access_token){handleToken(p.access_token,parseInt(p.expires_in)||3600);return}}
+  var au='https://accounts.google.com/o/oauth2/v2/auth?client_id='+encodeURIComponent(cfg.gClientId)+'&redirect_uri='+encodeURIComponent(ru)+'&response_type=token&scope='+encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile')+(silent?'&prompt=none':'&prompt=consent');
+  window.location.href=au;
+}
+function handleToken(token,ei){
+  S.token=token;S.tokObj={access_token:token,expires_at:Date.now()+ei*1000};localStorage.setItem('mm_tok',JSON.stringify(S.tokObj));
+  fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+token}}).then(function(r){return r.json()}).then(function(p){S.user={name:p.name||p.email||'用户',email:p.email||'',picture:p.picture||''};localStorage.setItem('mm_user',JSON.stringify(S.user));if(window.history&&window.history.replaceState)window.history.replaceState({},'',window.location.origin+window.location.pathname);S.cat='all';fetchEmails()}).catch(function(){S.user={name:'用户',email:'',picture:''};fetchEmails()});
+}
+function doLogout(){S.token=null;S.tokObj=null;S.user=null;S.emails=[];S.selId=null;S.selDetail=null;S.categories={};S.aiState='idle';S._aiDraft=null;S._aiMeta=null;S.summary=null;localStorage.removeItem('mm_tok');localStorage.removeItem('mm_user');localStorage.removeItem('mm_cats');draw()}
+
+function resetAllData(){if(!confirm('清空所有分类？'))return;USER_CATS=[];S.categories={};localStorage.setItem('mm_usercats','[]');localStorage.setItem('mm_cats','{}');S.cat='all';showToast('已清除');fetchEmails()}
+function addCategory(){var n=prompt('输入新分类名：');if(n&&n.trim()){var nn=n.trim();if(USER_CATS.indexOf(nn)>=0){showToast('已存在',false);return}USER_CATS.push(nn);saveUserCats();showToast('已添加: '+nn);draw()}}
+function changeEmailCategory(id){var opts=USER_CATS.slice();var lst='选一个或输入新分类：\n0. 取消分类\n';opts.forEach(function(c,i){lst+=(i+1)+'. '+c+'\n'});var inp=prompt(lst);if(!inp)return;var idx=parseInt(inp);if(!isNaN(idx)&&idx===0){delete S.categories[id]}else if(!isNaN(idx)&&idx>=1&&idx<=opts.length){S.categories[id]=opts[idx-1]}else{S.categories[id]=inp.trim();if(USER_CATS.indexOf(inp.trim())<0){USER_CATS.push(inp.trim());saveUserCats()}}localStorage.setItem('mm_cats',JSON.stringify(S.categories));showToast('已更新');fetchEmails()}
+
+// === RENDER ===
+function draw(){
+  var app=$id('app');if(!app)return;
+
+  // Check credentials configured
+  var cfg=getConfig();
+  if(!cfg.aiKey||!cfg.gClientId){drawSetup(app);return}
+
+  // Restore session
+  if(!S.user&&!S.token){var st=localStorage.getItem('mm_tok'),su=localStorage.getItem('mm_user');if(st&&su){try{S.tokObj=JSON.parse(st);S.token=S.tokObj.access_token;S.user=JSON.parse(su);var sc=localStorage.getItem('mm_cats');if(sc)try{S.categories=JSON.parse(sc)}catch(e){}}catch(e){}}}
+  if(!S.user&&window.location.hash&&window.location.hash.indexOf('access_token')>=0){doLogin();return}
+  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin(true);return}
+  if(!S.user){drawLogin(app);return}
+  if(S.emails.length===0&&!S.summary&&!S.selDetail){app.innerHTML='<div class="spin-box"><div class="spin"></div><div>正在加载...</div></div>';if(!S._fetching){S._fetching=true;fetchEmails()}return}
+  app.innerHTML='';drawMain(app);
+}
+
+function drawSetup(app){
+  app.innerHTML='<div class="login-page"><div class="login-card">'+
+    '<h1>Mail<em>Mind</em></h1><p style="text-align:center;color:var(--t2);font-size:.9rem;margin-bottom:24px">首次使用请配置密钥，信息保存在本地浏览器中</p>'+
+    '<div class="setup-step"><label>Google Client ID</label><input id="cfg_gid" placeholder="从 Google Cloud Console 获取" value="'+(localStorage.getItem('mm_gClientId')||'')+'"><div class="hint">在 <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a> 创建 OAuth 客户端，并把当前网址加入重定向 URI</div></div>'+
+    '<div class="setup-step"><label>AI API Key</label><input id="cfg_apikey" placeholder="sk-xxx..." value="'+(localStorage.getItem('mm_aiKey')||'')+'"><div class="hint">OpenAI 兼容的 API Key（Sandbox Crew、OpenRouter、DeepSeek 等）</div></div>'+
+    '<div class="setup-step"><label>API Base URL（可选）</label><input id="cfg_base" placeholder="https://api.sandboxcrew.ai/v1" value="'+(localStorage.getItem('mm_aiBase')||'')+'"><div class="hint">OpenAI 兼容的 API 地址，留空默认 Sandbox Crew</div></div>'+
+    '<div class="setup-step"><label>模型名称</label><input id="cfg_model" placeholder="deepseek-v4-pro" value="'+(localStorage.getItem('mm_aiModel')||'deepseek-v4-pro')+'"></div>'+
+    '<button class="btn btn-accent" style="width:100%;justify-content:center;padding:14px;font-size:.9rem" onclick="saveConfig()">💾 保存配置 & 开始使用</button>'+
+    '<p class="login-foot">密钥只保存在你的浏览器 localStorage 中，不会上传到我们的服务器。</p></div></div>';
+}
+function saveConfig(){
+  var gid=document.getElementById('cfg_gid').value.trim();
+  var ak=document.getElementById('cfg_apikey').value.trim();
+  var ba=document.getElementById('cfg_base').value.trim()||'https://api.sandboxcrew.ai/v1';
+  var md=document.getElementById('cfg_model').value.trim()||'deepseek-v4-pro';
+  if(!gid||!ak){showToast('请填写 Google Client ID 和 API Key',false);return}
+  localStorage.setItem('mm_gClientId',gid);
+  localStorage.setItem('mm_aiKey',ak);
+  localStorage.setItem('mm_aiBase',ba);
+  localStorage.setItem('mm_aiModel',md);
+  showToast('配置已保存！');
+  draw();
+}
+function drawLogin(app){
+  app.innerHTML='<div class="login-page"><div class="login-card">'+
+    '<h1>Mail<em>Mind</em></h1>'+
+    '<p style="text-align:center;color:var(--t2);font-size:.9rem;margin-bottom:24px">AI 邮件助手。按品牌/项目分类，模仿你的风格回复。</p>'+
+    '<div style="text-align:left;margin-bottom:24px;font-size:.84rem;color:var(--t2)">'+
+    '<div style="padding:6px 0">🤖 AI 自动识别品牌/项目分类邮件</div><div style="padding:6px 0">✍️ 模仿你的语气起草回复（Reply All）</div>'+
+    '<div style="padding:6px 0">📊 一键每日摘要 | 🌐 英文翻译中文</div></div>'+
+    '<button class="btn btn-accent" style="width:100%;justify-content:center;padding:14px;font-size:.95rem" onclick="doLogin()">🔗 连接 Gmail 账号</button>'+
+    '<p class="login-foot" style="margin-top:16px">密钥配置：<button class="btn btn-gh btn-sm" onclick="clearConfig()">⚙ 重新配置密钥</button></p>'+
+    '<p class="login-foot">数据保存在本地浏览器。不会上传到任何服务器。</p></div></div>';
+}
+function clearConfig(){localStorage.removeItem('mm_gClientId');localStorage.removeItem('mm_aiKey');localStorage.removeItem('mm_aiBase');localStorage.removeItem('mm_aiModel');S.user=null;S.token=null;draw()}
+
+function drawMain(app){
+  var cc={};for(var id in S.categories){var c=S.categories[id];cc[c]=(cc[c]||0)+1}var total=Object.keys(S.categories).length;
+  var cl=getCatList();
+  var sideHtml='<aside class="sidebar"><div class="side-logo">Mail<em>Mind</em></div><nav class="side-nav">';
+  cl.forEach(function(cat){var count=cat.id==='all'?total:(cat.id==='_uncategorized'?(S.emails.length-total):(cc[cat.id]||0));sideHtml+='<button class="nav-item'+(S.cat===cat.id?' on':'')+'" onclick="S.cat=\''+cat.id+'\';S.selId=null;S.selDetail=null;S.aiState=\'idle\';fetchEmails()">'+cat.icon+' '+cat.label+(count>0?' <span class="badge">'+count+'</span>':'')+'</button>'});
+  sideHtml+='<button class="nav-item" style="color:#60A5FA;border:1px dashed rgba(96,165,250,.3);margin-top:6px" onclick="addCategory()">＋ 添加分类</button></nav>';
+  var uname=S.user?(S.user.name||'用户'):'用户',uemail=S.user?(S.user.email||''):'';
+  sideHtml+='<div class="side-foot"><div class="side-av">'+(S.user&&S.user.picture?'<img src="'+S.user.picture+'" alt="">':(uname[0]||'?').toUpperCase())+'</div><div class="side-info"><div class="side-name">'+uname+'</div><div class="side-email">'+uemail+'</div></div><button style="color:var(--tsidem);padding:4px" onclick="doLogout()">🚪</button></div></aside>';
+
+  var catObj=cl.find(function(c){return c.id===S.cat});var catLabel=(catObj||{}).label||'收件箱';
+  var topHtml='<div class="topbar"><h2>'+catLabel+'</h2><div class="topbar-actions"><button class="btn btn-gh btn-sm" onclick="resetAllData()">🔄 重置</button><button class="btn btn-s btn-sm" onclick="doSummary()">📋 摘要</button><button class="btn btn-accent btn-sm" onclick="doClassify()"'+(S.classifying?' disabled':'')+'>'+(S.classifying?(S._loadTotal>0?'⏳ '+S._loadCount+'/'+S._loadTotal:'⏳ 分类中...'):'🤖 智能分类')+'</button></div></div>';
+
+  var sumHtml='';if(S.summary)sumHtml='<div class="summary"><div class="summary-hd"><span>📋 今日简报</span><button style="font-size:.75rem;color:var(--t3)" onclick="S.summary=null;draw()">✕</button></div><p>'+S.summary+'</p></div>';
+
+  var listHtml='';
+  if(S.loading){if(S._loadTotal>0){var pct=Math.round(S._loadCount/S._loadTotal*100);listHtml='<div style="padding:40px;text-align:center;color:var(--t2)"><div>加载中... '+S._loadCount+'/'+S._loadTotal+'</div><div style="width:200px;height:4px;background:var(--border);border-radius:2px;margin:8px auto;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:var(--accent);border-radius:2px;transition:width .3s"></div></div></div>'}else listHtml='<div style="display:flex;align-items:center;justify-content:center;padding:40px;color:var(--t2)"><div class="spin"></div></div>'}
+  else if(S.emails.length===0)listHtml='<div class="empty"><p style="font-size:2.5rem">📭</p><h3>暂无邮件</h3><p>点击"智能分类"整理收件箱</p></div>';
+  else{listHtml='<div class="email-list">';S.emails.forEach(function(e){listHtml+='<div class="email-row'+(e.isUnread?' unread':'')+(S.selId===e.id?' sel':'')+'" onclick="fetchDetail(\''+e.id+'\')"><div class="email-body"><div class="email-from">'+e.from+'</div><div class="email-sub">'+e.subject+'</div><div class="email-snip">'+e.snippet+'</div></div><div class="email-meta"><div class="email-date">'+fmtDate(e.date)+'</div>'+(e.category?'<span class="cat '+e.category+'">'+e.category+'</span>':'')+'</div></div>'});listHtml+='</div>'}
+
+  var detailHtml='';
+  if(S.selDetail){var e=S.selDetail;var from=parseFrom(e.from);detailHtml='<div class="detail-panel"><div class="detail-hd"><button class="btn btn-gh btn-sm" onclick="S.selId=null;S.selDetail=null;S.aiState=\'idle\';S._aiDraft=null;draw()">← 返回列表</button><div style="font-size:.76rem;color:var(--t3)">'+(e.category?'<span class="cat '+e.category+'" style="cursor:pointer" title="修改分类" onclick="event.stopPropagation();changeEmailCategory(\''+e.id+'\')">'+e.category+' ✎</span>':'<button class="btn btn-gh btn-sm" onclick="event.stopPropagation();changeEmailCategory(\''+e.id+'\')">添加分类</button>')+'</div></div><div class="detail-scroll"><h3 class="detail-sub">'+e.subject+'</h3><div class="detail-meta"><div class="detail-meta-item"><span class="lbl">发件人</span><span class="val">'+from.name+'</span><span style="color:var(--t3);font-size:.74rem">&lt;'+from.email+'&gt;</span></div>'+(e.to?'<div class="detail-meta-item"><span class="lbl">收件人</span><span class="val">'+e.to+'</span></div>':'')+'<div class="detail-meta-item"><span class="lbl">日期</span><span class="val">'+(e.date?new Date(e.date).toLocaleString('zh-CN'):'')+'</span></div></div><div class="detail-body">'+(e.body||'(无文本内容)')+'</div><div style="margin-top:12px;display:flex;align-items:center;gap:8px"><button class="btn btn-s btn-sm" onclick="doTranslate()"'+(S.translateState==='loading'?' disabled':'')+'>🌐 '+(S.translateState==='done'?'重新翻译':(S.translateState==='loading'?'翻译中...':'翻译成中文'))+'</button></div>'+(S.translateState==='done'&&S.translation?'<div class="translate-block"><div class="trans-label">🌐 中文翻译<button class="btn btn-gh btn-sm" onclick="S.translation=null;S.translateState=\'idle\';draw()" style="font-size:.7rem">✕ 收起</button></div><div class="trans-text">'+S.translation+'</div><div class="trans-original"><div class="orig-label">📄 英文原文</div><div class="orig-text">'+e.body+'</div></div></div>':(S.translateState==='loading'?'<div style="padding:12px 0;color:var(--t2);font-size:.82rem">⏳ 翻译中...</div>':''))+(S.translateState==='error'?'<div style="padding:12px 0;color:#DC2626;font-size:.82rem">'+S.translation+'</div>':'')+(e.fullBody&&e.fullBody.length>e.latestBody.length+50?'<div style="margin-top:12px;text-align:center"><button class="btn btn-gh btn-sm" onclick="toggleFullBody()">'+(S._showFull?'🔼 收起':'🔽 展开完整对话（'+Math.round((e.fullBody.length-e.latestBody.length)/1000)+'k字历史）')+'</button></div>':'')+drawAiSection()+'</div></div>'}
+  else if(S.selId&&!S.selDetail)detailHtml='<div class="detail-panel"><div class="detail-hd"><button class="btn btn-gh btn-sm" onclick="S.selId=null;S.selDetail=null;draw()">← 返回</button></div><div style="display:flex;align-items:center;justify-content:center;height:200px;color:var(--t2)"><div class="spin"></div></div></div>';
+
+  app.innerHTML='<div class="layout">'+sideHtml+'<div class="main">'+topHtml+'<div class="content"><div class="email-list-panel'+(S.selDetail||S.selId?' has-detail':'')+'">'+sumHtml+listHtml+'</div>'+detailHtml+'</div></div></div>';
+  if(S.aiState==='done'&&S._aiDraft){var ta=$q('.ai-ta');if(ta)ta.value=S._aiDraft}
+}
+
+function drawAiSection(){
+  var e=S.selDetail;var from=parseFrom(e.from);var replyTo=from.email;var replySub=e.subject&&e.subject.toLowerCase().indexOf('re:')===0?e.subject:'Re: '+(e.subject||'');
+  var ccU=[];if(e.to)ccU=ccU.concat(e.to.split(',').map(function(s){return s.trim()}).filter(Boolean));if(e.cc)ccU=ccU.concat(e.cc.split(',').map(function(s){return s.trim()}).filter(Boolean));
+  var myE=(S.user.email||'').toLowerCase();ccU=ccU.filter(function(a){var addr=a.match(/<([^>]+)>/)||[a,a];return addr[1].toLowerCase()!==myE});
+  var ccInf=ccU.length>0?' + 抄送 '+ccU.length+' 人':'';
+  var rInfo='回复全部：<b>'+replyTo+'</b>'+ccInf+' &nbsp;|&nbsp; 主题：<b>'+replySub+'</b>';
+  var html='<div class="ai-section"><div class="ai-section-title">🤖 AI 智能回复 <span style="font-size:.7rem;color:var(--t3);font-weight:400">（Reply All）</span></div>';
+  if(S.aiState==='generating'){html+='<div class="ai-load"><div class="ai-dots"><span></span><span></span><span></span></div>起草中...'+(S._genFeedback?' 改进：'+S._genFeedback:'')+'</div>'}
+  else if(S.aiState==='done'){html+='<div class="ai-reply-info">'+rInfo+'</div><textarea class="ai-ta" id="aiReplyArea">'+(S._aiDraft||'')+'</textarea><div style="margin-bottom:8px"><input id="feedbackInput" class="ai-instructions" placeholder="不满意?写改进意见后点重生成..." style="margin-bottom:0"></div><div class="ai-acts"><div class="ai-acts-left"><button class="btn btn-gh btn-sm" onclick="document.getElementById(\'aiReplyArea\').value=\'\'">清空</button><button class="btn btn-gh btn-sm" onclick="S.aiState=\'idle\';S._aiDraft=null;draw()">放弃</button><button class="btn btn-s btn-sm" onclick="var fb=document.getElementById(\'feedbackInput\');doGenReply(fb?fb.value:\'\')">重生成</button></div><button class="btn btn-accent btn-sm" onclick="doSendReply()">回复全部</button></div>'}
+  else{html+='<div class="ai-ctrls"><select class="ai-sel tone"><option value="professional">专业</option><option value="casual">随意</option><option value="friendly">友好</option><option value="formal">正式</option><option value="concise">简洁</option></select><select class="ai-sel length"><option value="short">简短</option><option value="medium" selected>中等</option><option value="long">详细</option></select></div><input class="ai-instructions" placeholder="额外要求：如"用中文回复""强调明天下��3点开会"..."><button class="btn btn-accent" style="width:100%;justify-content:center;padding:14px;font-size:.9rem" onclick="doGenReply()">⚡ 生成回复（AI 模仿我的风格）</button>'}
+  return html+'</div>';
+}
+
+(function(){
+  S._fetching=false;
+  if(window.location.hash&&window.location.hash.indexOf('access_token')>=0){doLogin();return}
+  var st=localStorage.getItem('mm_tok'),su=localStorage.getItem('mm_user');
+  if(st&&su){try{S.tokObj=JSON.parse(st);S.token=S.tokObj.access_token;S.user=JSON.parse(su);var sc=localStorage.getItem('mm_cats');if(sc)try{S.categories=JSON.parse(sc)}catch(e){}}catch(e){}}
+  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin(true);return}
+  draw();if(S.user)fetchEmails();
+})();
+</script>
+</body>
+</html>
