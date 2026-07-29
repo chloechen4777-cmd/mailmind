@@ -243,10 +243,24 @@ function fetchDetail(id){
   gmailApi('/messages/'+id+'?format=full').then(function(d){
     var hd=d.payload.headers||[];
     function gh(n){var h=hd.find(function(h){return h.name.toLowerCase()===n.toLowerCase()});return h?h.value:''}
-    var body='',p=d.payload;
-    function db64(data){try{return decodeURIComponent(escape(atob(data.replace(/-/g,'+').replace(/_/g,'/'))))}catch(e){return atob(data.replace(/-/g,'+').replace(/_/g,'/'))}}
-    if(p.body&&p.body.data)body=db64(p.body.data);
-    else if(p.parts){for(var i=0;i<p.parts.length;i++){if(p.parts[i].mimeType==='text/plain'&&p.parts[i].body&&p.parts[i].body.data){body=db64(p.parts[i].body.data);break}}if(!body)for(var j=0;j<p.parts.length;j++){if(p.parts[j].mimeType==='text/html'&&p.parts[j].body&&p.parts[j].body.data){var html=db64(p.parts[j].body.data);body=html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\n\s*\n/g,'\n').trim();break}}}
+    function db64(data){try{var bytes=Uint8Array.from(atob(data.replace(/-/g,'+').replace(/_/g,'/')),function(c){return c.charCodeAt(0)});return new TextDecoder('utf-8',{fatal:false}).decode(bytes)}catch(e){return atob(data.replace(/-/g,'+').replace(/_/g,'/'))}}
+    function htmlToText(html){return html.replace(/<style[^>]*>[\s\S]*?<\/style>/gi,'').replace(/<script[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<[^>]*>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/\n\s*\n/g,'\n').replace(/[ \t]+/g,' ').replace(/\n /g,'\n').trim()}
+    function findBody(part,preferText){
+      var text='',html='';
+      function walk(p){
+        if(!p)return;
+        if(p.body&&p.body.data){
+          var dec=db64(p.body.data);
+          if(p.mimeType==='text/plain')text=text||dec;
+          else if(p.mimeType==='text/html')html=html||htmlToText(dec);
+        }
+        if(p.parts)p.parts.forEach(walk);
+      }
+      walk(part);
+      if(preferText&&text)return text;
+      return html||text||'';
+    }
+    var body=findBody(d.payload,true);
     var lb=extractLatest(body);
     S.selDetail={id:d.id,threadId:d.threadId,subject:gh('Subject'),from:gh('From'),to:gh('To'),cc:gh('Cc'),date:gh('Date'),messageId:gh('Message-ID'),fullBody:body,latestBody:lb,body:lb,labelIds:d.labelIds||[],category:S.categories[id]||null};
     draw();
