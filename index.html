@@ -490,7 +490,8 @@ function doLogin(silent){
   var ru=window.location.origin+window.location.pathname.replace(/\/+$/,'');if(!ru)ru=window.location.origin;
   var hash=window.location.hash;
   if(hash&&hash.indexOf('access_token')>=0){var p={};hash.substring(1).split('&').forEach(function(pr){var pp=pr.split('=');p[pp[0]]=decodeURIComponent(pp[1]||'')});if(p.access_token){handleToken(p.access_token,parseInt(p.expires_in)||3600);return}}
-  var au='https://accounts.google.com/o/oauth2/v2/auth?client_id='+encodeURIComponent(cfg.gClientId)+'&redirect_uri='+encodeURIComponent(ru)+'&response_type=token&scope='+encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile')+(silent?'&prompt=none':'&prompt=consent');
+  if(hash&&(hash.indexOf('error=')>=0||hash.indexOf('error_subtype=')>=0)){localStorage.removeItem('mm_tok');localStorage.removeItem('mm_user');}
+  var au='https://accounts.google.com/o/oauth2/v2/auth?client_id='+encodeURIComponent(cfg.gClientId)+'&redirect_uri='+encodeURIComponent(ru)+'&response_type=token&scope='+encodeURIComponent('https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile')+'&prompt=select_account+consent';
   window.location.href=au;
 }
 function handleToken(token,ei){
@@ -526,7 +527,7 @@ function draw(){
   // Restore session
   if(!S.user&&!S.token){var st=localStorage.getItem('mm_tok'),su=localStorage.getItem('mm_user');if(st&&su){try{S.tokObj=JSON.parse(st);S.token=S.tokObj.access_token;S.user=JSON.parse(su);var sc=localStorage.getItem('mm_cats');if(sc)try{S.categories=JSON.parse(sc)}catch(e){}}catch(e){}}}
   if(!S.user&&window.location.hash&&window.location.hash.indexOf('access_token')>=0){doLogin();return}
-  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin(true);return}
+  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin();return}
   if(!S.user){drawLogin(app);return}
   if(S.emails.length===0&&!S.summary&&!S.selDetail){app.innerHTML='<div class="spin-box"><div class="spin"></div><div>正在加载...</div></div>';if(!S._fetching){S._fetching=true;fetchEmails()}return}
   app.innerHTML='';drawMain(app);
@@ -615,7 +616,7 @@ function drawAiSection(){
   if(window.location.hash&&window.location.hash.indexOf('access_token')>=0){doLogin();return}
   var st=localStorage.getItem('mm_tok'),su=localStorage.getItem('mm_user');
   if(st&&su){try{S.tokObj=JSON.parse(st);S.token=S.tokObj.access_token;S.user=JSON.parse(su);var sc=localStorage.getItem('mm_cats');if(sc)try{S.categories=JSON.parse(sc)}catch(e){}}catch(e){}}
-  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin(true);return}
+  if(S.user&&S.tokObj&&Date.now()>=S.tokObj.expires_at){doLogin();return}
   draw();if(S.user)fetchEmails();
 })();
 </script>
