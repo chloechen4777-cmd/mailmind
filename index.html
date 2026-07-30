@@ -612,24 +612,27 @@ function doSummary(){
 function doSummary2(dl){aiChat('用中文总结今天这'+dl.length+'封邮件，按品牌/项目分组，2-3句，标出需回复的。\n\n'+dl.join('\n'),function(err,reply){S.summary=err?'失败: '+err:reply;draw()},512)}
 
 function doGenReply(feedback){
-  if(!S.selDetail)return;S.aiState='generating';S._genFeedback=feedback||'';draw();
+  if(!S.selDetail)return;
   var email=S.selDetail;
   var tone=($q('.ai-sel.tone')||{}).value||'professional';
   var len=($q('.ai-sel.length')||{}).value||'medium';
+  var snippetId=($q('.ai-sel.snippet')||{}).value||'';
+  var snippet=snippetId?getSnippetById(snippetId):null;
   var instEl=$q('.ai-instructions');
   var inst=(instEl?instEl.value:'')||(S._genFeedback||'');
   var lg={short:'2-4句',medium:'1-2段',long:'3-4段'};
   if(S._aiDraft&&S._aiDraft.indexOf('生成失败')!==0&&feedback){inst=(inst||'')+'（上次不满意：'+feedback+'。请改进。）'}
+  S.aiState='generating';S._genFeedback=feedback||'';S._pendingSnippet=snippet;draw();
   var samples=[];
   gmailApi('/messages?maxResults=10&labelIds=SENT').then(function(sent){var msgs=(sent.messages||[]).slice(0,5);var done=0;function next(){if(done>=msgs.length){doGenReply2(email,tone,len,lg,inst,samples);return}var m=msgs[done];gmailApi('/messages/'+m.id+'?format=full').then(function(sd){var bc='';if(sd.payload.body&&sd.payload.body.data)bc=atob(sd.payload.body.data.replace(/-/g,'+').replace(/_/g,'/'));if(bc&&bc.length>20)samples.push(bc.substring(0,600));done++;next()}).catch(function(){done++;next()})}next()}).catch(function(){doGenReply2(email,tone,len,lg,inst,[])})}
 function doGenReply2(email,tone,len,lg,inst,samples){
   var from=parseFrom(email.from);
-  var snippetId=($q('.ai-sel.snippet')||{}).value||'';
-  var snippet=snippetId?getSnippetById(snippetId):null;
+  var snippet=S._pendingSnippet;S._pendingSnippet=null;
   var extra=inst?inst:'';
   if(snippet){extra=(extra?extra+'\n':'')+'【必须使用的信息】\n'+snippet.content}
   var sc='';if(samples.length>0){sc='\n\n=== 我之前的邮件（模仿风格）===\n';samples.forEach(function(s,i){sc+='\n邮件'+(i+1)+'（我写的）：\n'+s})}
-  var prompt='帮我起草英文回复邮件，并附带中文翻译。\n\n原邮件：\n发件人：'+from.name+'\n主题：'+email.subject+'\n正文：\n'+email.body.substring(0,3000)+sc+'\n\n要求：语气'+tone+'，长度'+(lg[len]||'1-2段')+'。'+(extra?'额外要求：'+extra+'\n':'')+(samples.length?'模仿我邮件的问候、签名、句式、标点习惯。':'')+'\n\n输出格式必须严格如下（不要改变标签）：\n[ENGLISH]\n（英文回复正文）\n[/ENGLISH]\n[CHINESE]\n（中文翻译/中文意思）\n[/CHINESE]';
+  var toneDesc={professional:'专业但有温度',casual:'像同事聊天一样自然',friendly:'热情、亲切',formal:'商务正式',concise:'简短直接'};
+  var prompt='帮我起草英文回复邮件，并附带中文翻译。\n\n原邮件：\n发件人：'+from.name+'\n主题：'+email.subject+'\n正文：\n'+email.body.substring(0,3000)+sc+'\n\n要求：\n1. 语气'+toneDesc[tone]+'，长度'+(lg[len]||'1-2段')+'。\n2. 写完后大声读一遍，确保读起来像真人写的邮件，不要AI腔。\n3. 避免套话、过度礼貌、机械排比。使用自然过渡词和具体称呼。\n4. 如果邮件涉及事实、数字、时间，请原样保留，不要编造。\n5. 签名只用简单的 "Best," 或 "Thanks," 加换行，不要堆砌客套话。'+(extra?'\n额外要求：'+extra+'\n':'')+(samples.length?'\n6. 模仿我邮件的问候、签名、句式、标点习惯。':'')+'\n\n输出格式必须严格如下（不要改变标签）：\n[ENGLISH]\n（英文回复正文）\n[/ENGLISH]\n[CHINESE]\n（中文翻译/中文意思）\n[/CHINESE]';
   aiChat(prompt,function(err,reply){
     S.aiState='done';
     if(err){S._aiDraft='失败: '+err;S._aiDraftCn='';}
