@@ -690,33 +690,58 @@ function doTranslate(idx){
 }
 function renderThreadItems(e){
   if(!e.threadItems||e.threadItems.length===0)return'';
-  var html='<div class="thread-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">';
   var total=e.threadItems.length;
-  var openIdx=(S._openThreadIdx!==undefined)?S._openThreadIdx:(total-1);
-  e.threadItems.forEach(function(it,i){
-    var from=parseFrom(it.from);
-    var isMe=it.isMe;
-    var dateStr=it.date?new Date(it.date).toLocaleString('zh-CN'):'';
-    var isOpen=(i===openIdx);
-    var isTranslating=S.translateState==='loading'&&S._translatingIdx===i;
-    var hasTrans=S.translateState==='done'&&S._translatingIdx===i&&S.translation;
-    if(isOpen){
-      html+='<div class="thread-item" style="padding:14px;background:var(--surf);border:1px solid var(--border);border-radius:10px'+(isMe?';border-left:3px solid var(--accent)':'')+'">';
-      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><span style="font-weight:500;font-size:.85rem">'+(isMe?'我':from.name)+'</span><span style="color:var(--t3);font-size:.74rem;margin-left:6px">&lt;'+from.email+'&gt;</span></div><span style="color:var(--t3);font-size:.72rem">'+dateStr+'</span></div>';
-      var displayBody=(it.isHtml?sanitizeHtml(it.fullHtml):escapeHtml(bodyWithLinks(it.body||it.latestText||'')));
-      html+='<div class="detail-body '+(it.isHtml?'html':'plain')+'">'+displayBody+'</div>';
-      if(it.attachments&&it.attachments.length>0){html+='<div class="attachments">'+it.attachments.map(function(a){return '<span class="att" onclick="downloadAttachment(\''+a.id+'\',\''+escapeHtml(a.name)+'\')">📎 '+escapeHtml(a.name)+'</span>'}).join('')+'</div>'}
-      html+='<div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-gh btn-sm" onclick="doTranslate('+i+')"'+(isTranslating?' disabled':'')+'>🌐 '+(isTranslating?'翻译中...':(hasTrans?'收起翻译':'翻译'))+'</button></div>';
-      if(hasTrans){html+='<div class="translate-block" style="margin-top:10px"><div class="trans-label">🌐 中文翻译</div><div class="trans-text">'+S.translation+'</div></div>'}
-      html+='</div>';
+  if(total===1){
+    // only latest email, no history
+    var it=e.threadItems[0];
+    return renderOneThreadItem(it,0,true);
+  }
+  var latestIdx=total-1;
+  var openIdx=(S._openThreadIdx!==undefined)?S._openThreadIdx:latestIdx;
+  var historyOpen=(S._historyOpen===true);
+  var html='<div class="thread-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">';
+  // 1. latest email always expanded at top
+  html+=renderOneThreadItem(e.threadItems[latestIdx],latestIdx,true);
+  // 2. history fold
+  var historyCount=total-1;
+  html+='<div class="thread-history-wrap" style="margin-top:4px">';
+  html+='<button class="btn btn-gh btn-sm" onclick="S._historyOpen=!S._historyOpen;draw()" style="width:100%;justify-content:center;padding:10px;font-size:.8rem">'+(historyOpen?'🔼 收起上下文':'🔽 展开上下文 ('+historyCount+' 封)')+'</button>';
+  if(historyOpen){
+    if(S._expandAllHistory){
+      // all history expanded
+      html+='<div style="display:flex;justify-content:flex-end;margin:6px 0"><button class="btn btn-gh btn-sm" onclick="S._expandAllHistory=false;draw()">全部收起</button></div>';
+      for(var i=0;i<total-1;i++){html+=renderOneThreadItem(e.threadItems[i],i,true)}
     }else{
-      html+='<div class="thread-item thread-collapsed" onclick="S._openThreadIdx='+i+';draw()" style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--t2);font-size:.8rem">';
-      html+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:.72rem;color:var(--t3)">▶</span><span><b style="color:var(--t1)">'+(isMe?'我':from.name)+'</b> · '+(it.subject||it.snippet||'(无主题)')+'</span></div>';
-      html+='<span style="font-size:.72rem">'+dateStr+'</span>';
-      html+='</div>';
+      html+='<div style="display:flex;justify-content:flex-end;margin:6px 0"><button class="btn btn-gh btn-sm" onclick="S._expandAllHistory=true;draw()">全部展开</button></div>';
+      for(var i=0;i<total-1;i++){html+=renderOneThreadItem(e.threadItems[i],i,(i===openIdx))}
     }
-  });
+  }
+  html+='</div>';
   return html+'</div>';
+}
+function renderOneThreadItem(it,i,isOpen){
+  var from=parseFrom(it.from);
+  var isMe=it.isMe;
+  var dateStr=it.date?new Date(it.date).toLocaleString('zh-CN'):'';
+  var isTranslating=S.translateState==='loading'&&S._translatingIdx===i;
+  var hasTrans=S.translateState==='done'&&S._translatingIdx===i&&S.translation;
+  var html='';
+  if(isOpen){
+    html+='<div class="thread-item" style="padding:14px;background:var(--surf);border:1px solid var(--border);border-radius:10px'+(isMe?';border-left:3px solid var(--accent)':'')+'">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div><span style="font-weight:500;font-size:.85rem">'+(isMe?'我':from.name)+'</span><span style="color:var(--t3);font-size:.74rem;margin-left:6px">&lt;'+from.email+'&gt;</span></div><span style="color:var(--t3);font-size:.72rem">'+dateStr+'</span></div>';
+    var displayBody=(it.isHtml?sanitizeHtml(it.fullHtml):escapeHtml(bodyWithLinks(it.body||it.latestText||'')));
+    html+='<div class="detail-body '+(it.isHtml?'html':'plain')+'">'+displayBody+'</div>';
+    if(it.attachments&&it.attachments.length>0){html+='<div class="attachments">'+it.attachments.map(function(a){return '<span class="att" onclick="downloadAttachment(\''+a.id+'\',\''+escapeHtml(a.name)+'\')">📎 '+escapeHtml(a.name)+'</span>'}).join('')+'</div>'}
+    html+='<div style="margin-top:10px;display:flex;gap:8px"><button class="btn btn-gh btn-sm" onclick="doTranslate('+i+')"'+(isTranslating?' disabled':'')+'>🌐 '+(isTranslating?'翻译中...':(hasTrans?'收起翻译':'翻译'))+'</button></div>';
+    if(hasTrans){html+='<div class="translate-block" style="margin-top:10px"><div class="trans-label">🌐 中文翻译</div><div class="trans-text">'+S.translation+'</div></div>'}
+    html+='</div>';
+  }else{
+    html+='<div class="thread-item thread-collapsed" onclick="S._openThreadIdx='+i+';draw()" style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;color:var(--t2);font-size:.8rem">';
+    html+='<div style="display:flex;align-items:center;gap:8px"><span style="font-size:.72rem;color:var(--t3)">▶</span><span><b style="color:var(--t1)">'+(isMe?'我':from.name)+'</b> · '+(it.subject||it.snippet||'(无主题)')+'</span></div>';
+    html+='<span style="font-size:.72rem">'+dateStr+'</span>';
+    html+='</div>';
+  }
+  return html;
 }
 function bodyWithLinks(text){
   if(!text)return '';
